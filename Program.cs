@@ -108,6 +108,16 @@ unsafe class ManagedObjectWrapperHolder
         _wrapper->_holderHandle = GCHandle.FromIntPtr(RuntimeImports.RhHandleAllocRefCounted(this));
     }
 
+    internal int AddRef()
+    {
+        return Interlocked.Increment(ref _wrapper->_refCount);
+    }
+
+    internal int Release()
+    {
+        return Interlocked.Decrement(ref _wrapper->_refCount);
+    }
+
     ~ManagedObjectWrapperHolder()
     {
         _wrapper->_holderHandle.Free();
@@ -123,9 +133,9 @@ public static unsafe class SimpleInteropSystem
     {
         ManagedObjectWrapperHolder holder = s_objects.GetValue(obj, static key => {
             ManagedObjectWrapper* wrapper = (ManagedObjectWrapper*)NativeMemory.AllocZeroed((nuint)sizeof(ManagedObjectWrapper));
-            wrapper->_refCount = 1;
             return new ManagedObjectWrapperHolder(wrapper, key);
         });
+        holder.AddRef();
         return (nint)holder._wrapper;
     }
 
@@ -135,5 +145,12 @@ public static unsafe class SimpleInteropSystem
             throw new ArgumentNullException();
         ManagedObjectWrapper* wrapper = (ManagedObjectWrapper*)nativeObj;
         return ((ManagedObjectWrapperHolder)wrapper->_holderHandle.Target!)._wrappedObject;
+    }
+
+    public static int Release(object obj)
+    {
+        if (!s_objects.TryGetValue(obj, out ManagedObjectWrapperHolder? holder))
+            throw new InvalidOperationException();
+        return holder.Release();
     }
 }
